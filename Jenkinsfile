@@ -1,107 +1,74 @@
 pipeline {
-    agent {
-        kubernetes {
-            yaml """
-            apiVersion: v1
-            kind: Pod
-            spec:
-              containers:
-              - name: docker
-                image: docker:20.10.14-dind
-                command:
-                - sleep
-                args:
-                - 99d
-                securityContext:
-                  privileged: true
-                volumeMounts:
-                - name: docker-socket
-                  mountPath: /var/run/docker.sock
-              - name: kubectl
-                image: bitnami/kubectl:latest
-                command:
-                - sleep
-                args:
-                - 99d
-              volumes:
-              - name: docker-socket
-                hostPath:
-                  path: /var/run/docker.sock
-            """
-        }
-    }
+    agent any
     
     environment {
-        DOCKER_REGISTRY = 'registry.registry.svc.cluster.local:5000'  // Local registry
-        DOCKER_IMAGE = 'web-app'
-        DOCKER_TAG = "${BUILD_NUMBER}"
-        K8S_NAMESPACE = 'default'
+        DOCKER_REGISTRY = "registry.registry.svc.cluster.local:5000"
+        APP_NAME = "carvilla"
+        LOCAL_REPO_PATH = "/home/widhi/git-repos/CI-CD-pipeline"
     }
     
     stages {
         stage('Checkout') {
             steps {
-                checkout scm
+                // For a local repository, we can either:
+                // 1. Skip checkout if Jenkins can access the local directory
+                // 2. Use a shared directory approach
+                dir("${env.LOCAL_REPO_PATH}") {
+                    sh "ls -la"  // Just to verify we can access the local directory
+                }
+            }
+        }
+        
+        stage('Run Tests') {
+            steps {
+                dir("${env.LOCAL_REPO_PATH}") {
+                    sh 'chmod +x tests/test.sh'
+                    sh './tests/test.sh'
+                }
             }
         }
         
         stage('Build Docker Image') {
             steps {
-                container('docker') {
-                    sh "docker build -t ${DOCKER_REGISTRY}/${DOCKER_IMAGE}:${DOCKER_TAG} ."
-                    sh "docker tag ${DOCKER_REGISTRY}/${DOCKER_IMAGE}:${DOCKER_TAG} ${DOCKER_REGISTRY}/${DOCKER_IMAGE}:latest"
+                dir("${env.LOCAL_REPO_PATH}") {
+                    sh "docker build -t ${DOCKER_REGISTRY}/${APP_NAME}:${BUILD_ID} ."
                 }
             }
         }
         
-        stage('Push Docker Image') {
+        // Rest of stages remain the same but also use dir() if needed
+        stage('Push to Registry') {
             steps {
-                container('docker') {
-                    sh "docker push ${DOCKER_REGISTRY}/${DOCKER_IMAGE}:${DOCKER_TAG}"
-                    sh "docker push ${DOCKER_REGISTRY}/${DOCKER_IMAGE}:latest"
+                dir("${env.LOCAL_REPO_PATH}") {
+                    sh "docker push ${DOCKER_REGISTRY}/${APP_NAME}:${BUILD_ID}"
                 }
             }
         }
         
         stage('Deploy to Kubernetes') {
             steps {
-                container('kubectl') {
-                    sh """
-                    # Update deployment image
-                    kubectl apply -f k8s/deployment.yaml
-                    kubectl set image deployment/web-app web-app=${DOCKER_REGISTRY}/${DOCKER_IMAGE}:${DOCKER_TAG} -n ${K8S_NAMESPACE}
-                    kubectl rollout status deployment/web-app -n ${K8S_NAMESPACE}
-                    """
+                dir("${env.LOCAL_REPO_PATH}") {
+                    sh "sed -i 's|\\${BUILD_ID}|${BUILD_ID}|g' kubernetes/deployment.yaml"
+                    sh "kubectl apply -f kubernetes/deployment.yaml"
+                    sh "kubectl apply -f kubernetes/service.yaml"
                 }
             }
         }
         
         stage('Verify Deployment') {
             steps {
-                container('kubectl') {
-                    sh """
-                    # Wait for deployment to stabilize
-                    sleep 10
-                    
-                    # Check if pods are running
-                    kubectl get pods -l app=web-app -n ${K8S_NAMESPACE}
-                    
-                    # Check service details
-                    kubectl get svc web-app -n ${K8S_NAMESPACE}
-                    
-                    echo "Application deployed successfully! Access at http://10.34.7.115:30080"
-                    """
-                }
+                sh "kubectl rollout status deployment/carvilla-web -n default"
+                echo "Application deployed and accessible at http://10.34.7.115:40000"
             }
         }
     }
     
     post {
         success {
-            echo "Deployment completed successfully! Application is available at http://10.34.7.115:30080"
+            echo "CI/CD pipeline completed successfully!"
         }
         failure {
-            echo "Deployment failed! Check logs for details."
+            echo "CI/CD pipeline failed!"
         }
     }
 }

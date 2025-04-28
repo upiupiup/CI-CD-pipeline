@@ -1,0 +1,28 @@
+# Run on master node
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: carvilla-web
+  namespace: default
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: carvilla-web
+  template:
+    metadata:
+      labels:
+        app: carvilla-web
+    spec:
+      containers:
+      - name: carvilla-web
+        image: registry.registry.svc.cluster.local:5000/carvilla:${BUILD_ID}
+        ports:
+        - containerPort: 80
+        resources:
+          limits:
+            cpu: "0.5"
+            memory: "256Mi"
+          requests:
+            cpu: "0.2"
+            memory: "128Mi"
