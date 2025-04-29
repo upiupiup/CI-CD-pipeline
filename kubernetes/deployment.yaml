@@ -1,9 +1,10 @@
-# Run on master node
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: carvilla-web
   namespace: default
+  labels:
+    app: carvilla-web
 spec:
   replicas: 2
   selector:
@@ -16,7 +17,7 @@ spec:
     spec:
       containers:
       - name: carvilla-web
-        image: registry.registry.svc.cluster.local:5000/carvilla:${BUILD_ID}
+        image: registry.registry.svc.cluster.local:5000/carvilla:${BUILD_NUMBER}
         ports:
         - containerPort: 80
         resources:

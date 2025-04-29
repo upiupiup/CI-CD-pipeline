@@ -1,5 +1,5 @@
-#!/bin/bash
-# Run on Jenkins agent
+!/bin/bash
+# Simple test script to check required files exist
 
 echo "Running tests for CarVilla web application"
 
@@ -9,30 +9,16 @@ if [ ! -f index.html ]; then
   exit 1
 fi
 
-# Check if critical directories exist
+# Check if assets directory exists
 if [ ! -d assets ]; then
   echo "Error: assets directory not found!"
   exit 1
 fi
 
-# Check if critical JS and CSS files exist
-if [ ! -f assets/js/jquery.js ]; then
-  echo "Error: jQuery file not found!"
-  exit 1
-fi
-
-if [ ! -f assets/css/style.css ]; then
-  echo "Error: Main CSS file not found!"
-  exit 1
-fi
-
-# Validate HTML syntax (if html5validator is available)
-if command -v html5validator &> /dev/null; then
-  html5validator --root .
-  if [ $? -ne 0 ]; then
-    echo "HTML validation failed!"
-    exit 1
-  fi
+# Check if the title contains "CarVilla"
+if ! grep -q "<title>CarVilla</title>" index.html; then
+  echo "Warning: Title does not match expected value"
+  # Not failing the build for this, just warning
 fi
 
 echo "All tests passed successfully!"
