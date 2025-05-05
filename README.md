@@ -1,22 +1,3 @@
-Widhi-yahya: In the following workspace is a simple web application. The code available in Githubgit@github.com:Widhi-yahya/CI-CD-pipeline.git, and has been cloned in master node of Kubernetes in /home/widhi/git-repos/CI-CD-pipeline/. Please help me to make modul practicing CI/CD pipeline for deploying this web app. I have install and setting:
-
-1.Kubernetes, master 10.34.7.115 and worker in 10.34.7.5 these IP is local IP that cannot accessed from internet. All my experiments just run locally.
-2. The Prometheus also hasbeen installed
-3.Jenkins has been installed as Kubernetes Pods and has connected to above kubernetes through websocket http://10.34.7.115:32000/,
-4. I have add my Kubernetes to the cloud in the Jenkins and the name of the cloud is k8s
-5. Available port for apps 40000 -45000
-6.My Docker regist in http://10.34.7.115:30500/v2/_catalog
-please make CI-CD pipeline module that:
-
-Explain the pipeline scenario to perform:
-1. Deployed the Web app in Kubernetes
-2. Automatic tested
-3. Web app can be accesed by user
-4. I prefer to use Pipeline script
-5. Also give simple example trigger the Pipeline
-please in the module specified where the command must be run, for example in master or in worker
-
-GitHub Copilot: # CI/CD Pipeline Module for CarVilla Web Application
 
 This module provides a practical guide for implementing a CI/CD pipeline to deploy the CarVilla web application to Kubernetes in a local environment.
 
