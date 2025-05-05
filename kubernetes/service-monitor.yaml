@@ -1,0 +1,16 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: carvilla-web-monitor
+  namespace: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: carvilla-web
+  endpoints:
+  - port: http
+    interval: 15s
+    path: /metrics
+  namespaceSelector:
+    matchNames:
+    - default

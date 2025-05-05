@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
       - name: carvilla-web
-        image: registry.registry.svc.cluster.local:5000/carvilla:${BUILD_NUMBER}
+        image: 10.34.7.115:30500/carvilla:${BUILD_NUMBER}
         ports:
         - containerPort: 80
         resources:

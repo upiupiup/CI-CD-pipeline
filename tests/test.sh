@@ -1,4 +1,4 @@
-!/bin/bash
+#!/bin/bash
 # Simple test script to check required files exist
 
 echo "Running tests for CarVilla web application"
