@@ -205,11 +205,12 @@ After Jenkins restarts:
 7. Click "Save"
 ### Step 10: Create kubeconfig Secret for Jenkins
 This step ensures Jenkins has proper access to the Kubernetes API:
-### Create kubeconfig secret for Jenkins
+```bash
+# Create kubeconfig secret for Jenkins
 kubectl create secret generic jenkins-kubeconfig \
   --from-file=config=/home/widhi/.kube/config \
   -n devops-tools || true
-
+```
 ### Step 11: Configure Docker Registry Access
 Go to "Manage Jenkins" > "Manage Credentials" > "Jenkins" > "Global credentials" > "Add Credentials"
 Configure as follows:
@@ -519,7 +520,7 @@ EOF
                     sh '''
                     echo "Building Docker image..."
                     docker build --network=host -t ${REGISTRY_URL}/${IMAGE_NAME}:${BUILD_NUMBER} .
-                    docker tag ${REGISTRY_URL}/${IMAGE_NAME}:${BUILD_NUMBER} ${REGISTRY_URL}/${IMAGE_NAME}:latest
+                    docker tag ${REGISTRY_URLgit }/${IMAGE_NAME}:${BUILD_NUMBER} ${REGISTRY_URL}/${IMAGE_NAME}:latest
                     
                     echo "Pushing Docker image to registry..."
                     # Use HTTP protocol explicitly
