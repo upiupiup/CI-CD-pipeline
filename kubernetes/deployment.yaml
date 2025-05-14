@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
       - name: carvilla-web
-        image: 10.34.7.115:30500/carvilla:${BUILD_NUMBER}
+        image: 10.34.7.115:30500/carvilla:21
         ports:
         - containerPort: 80
         resources:

@@ -14,6 +14,7 @@ REBUILD=${2:-no}
 REPO_DIR="/home/widhi/git-repos/CI-CD-pipeline"
 REGISTRY="10.34.7.115:30500"
 IMAGE_NAME="carvilla"
+K8S_SERVER="https://10.34.7.115:6443"  # Explicitly set K8s API server
 
 cd $REPO_DIR
 
@@ -56,11 +57,6 @@ if [[ "$NEED_REBUILD" == "yes" ]]; then
   read -r answer
   if [[ "$answer" == "y" ]]; then
     echo "Pushing image to registry..."
-    # Configure Docker for insecure registry if needed
-    mkdir -p /etc/docker
-    grep -q "insecure-registries" /etc/docker/daemon.json 2>/dev/null || echo '{"insecure-registries": ["'${REGISTRY}'"]}' | sudo tee /etc/docker/daemon.json
-    sudo systemctl restart docker || true
-    
     docker push ${REGISTRY}/${IMAGE_NAME}:${BUILD_NUMBER}
     docker push ${REGISTRY}/${IMAGE_NAME}:latest
   fi
@@ -70,18 +66,18 @@ fi
 echo "Updating deployment manifest with build number ${BUILD_NUMBER}..."
 sed -i "s|\${BUILD_NUMBER}|${BUILD_NUMBER}|g" kubernetes/deployment.yaml
 
-# Apply Kubernetes manifests
+# Apply Kubernetes manifests with explicit server
 echo "Applying Kubernetes manifests..."
-kubectl apply -f kubernetes/deployment.yaml
-kubectl apply -f kubernetes/service.yaml
+kubectl --server=${K8S_SERVER} apply -f kubernetes/deployment.yaml
+kubectl --server=${K8S_SERVER} apply -f kubernetes/service.yaml
 
 # Wait for deployment
 echo "Waiting for deployment to complete..."
-kubectl rollout status deployment/carvilla-web --timeout=60s || echo "Rollout may not be complete, continuing..."
+kubectl --server=${K8S_SERVER} rollout status deployment/carvilla-web --timeout=60s || echo "Rollout may not be complete, continuing..."
 
 # Verify deployment
 echo "Verifying deployment..."
-kubectl get pods -l app=carvilla-web
-kubectl get svc carvilla-web-service
+kubectl --server=${K8S_SERVER} get pods -l app=carvilla-web
+kubectl --server=${K8S_SERVER} get svc carvilla-web-service
 
 echo "CarVilla Web App is now accessible at: http://10.34.7.115:40000"

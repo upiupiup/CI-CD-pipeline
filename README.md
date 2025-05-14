@@ -1,4 +1,3 @@
-
 This module provides a practical guide for implementing a CI/CD pipeline to deploy the CarVilla web application to Kubernetes in a local environment.
 
 ## 1. Pipeline Scenario Overview
@@ -6,6 +5,221 @@ This module provides a practical guide for implementing a CI/CD pipeline to depl
 The CI/CD pipeline will deploy the CarVilla web application using Jenkins, with automated testing before deployment, and making the application accessible to users through a NodePort service.
 
 ![CI/CD Pipeline Flow](https://mermaid.ink/img/pako:eNptkkFPwzAMhf-K5RNIbdOWwontyqETEkKcuA2-JFpwSeqQONOK2H8nbbt13eAW-733ZFnOWdmdp6yxBt1JW239CBHbnbLvl0r-wNcxtMTb9U7WX6yKfSvZpo-YwccQyDfPL-PxWIyvXXyvFewCOmR5BvJWUf7J_J6puHCC7lNwcSA84yptjYx2gE9k0fP7LhC8U-DNS1VV6gWzLKNU0JEfKSDxcEsnP9xzW_ZfgoTgUaUUrmKvw7pV0bZdzg7txfE3kOoX69C5FQn3FO42fMjcb0rinLUOfTMsZ7RKWD2X0R_V9gCXAcFtbMjTQW3JV2K7Jb8hHUkXSuwYnSW0DB5gazwe1VyKezDTmh4DB02cPrhMI13he22WG7O4CtRU1lwEK-H1Z3M7rM96ReXUDzv9WgvxN1P28acLzeSMJ_kbOOez9wT5Jkl61_HKn8EJO_ELF9B0p9C_tqP8G3Px6tSt8pTtu2F2QqjqbMGHYnl8vIxjX4VjXpwd_AQ6KOjs?type=png)
+
+## 1.5. Jenkins Installation
+
+Before implementing the CI/CD pipeline, you need to set up Jenkins in your Kubernetes cluster. Follow these steps:
+
+### Step 1: Create a Namespace for DevOps Tools
+
+```bash
+kubectl create namespace devops-tools
+```
+### Step 2: Create a Persistent Volume for Jenkins Data
+
+```bash
+cat > jenkins-volume.yaml << EOF
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: jenkins-pv
+  labels:
+    type: local
+spec:
+  storageClassName: manual
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: "/mnt/jenkins-data"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: jenkins-pvc
+  namespace: devops-tools
+spec:
+  storageClassName: manual
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+EOF
+```
+# Create the volume and host directory
+```bash
+sudo mkdir -p /mnt/jenkins-data
+sudo chmod 777 /mnt/jenkins-data
+kubectl apply -f jenkins-volume.yaml
+```
+### Step 3: Create Service Account for Jenkins
+
+```bash
+cat > jenkins-sa.yaml << EOF
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: jenkins
+  namespace: devops-tools
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: jenkins-admin-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+- kind: ServiceAccount
+  name: jenkins
+  namespace: devops-tools
+EOF
+kubectl apply -f jenkins-sa.yaml
+
+### Step 4: Create Jenkins Deployment and Service
+```bash
+cat > jenkins-deployment.yaml << EOF
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jenkins
+  namespace: devops-tools
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jenkins
+  template:
+    metadata:
+      labels:
+        app: jenkins
+    spec:
+      serviceAccountName: jenkins
+      securityContext:
+        fsGroup: 1000
+      containers:
+      - name: jenkins
+        image: jenkins/jenkins:lts
+        ports:
+        - containerPort: 8080
+          name: httpport
+        - containerPort: 50000
+          name: jnlpport
+        volumeMounts:
+        - name: jenkins-data
+          mountPath: /var/jenkins_home
+        env:
+        - name: JAVA_OPTS
+          value: "-Djenkins.install.runSetupWizard=true"
+        resources:
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+          requests:
+            memory: "500Mi"
+            cpu: "500m"
+      volumes:
+      - name: jenkins-data
+        persistentVolumeClaim:
+          claimName: jenkins-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jenkins
+  namespace: devops-tools
+spec:
+  type: NodePort
+  ports:
+  - port: 8080
+    targetPort: 8080
+    nodePort: 32000
+    name: http
+  - port: 50000
+    targetPort: 50000
+    name: jnlp
+  selector:
+    app: jenkins
+EOF
+```
+kubectl apply -f jenkins-deployment.yaml
+
+### Step 5: Wait for Jenkins to Start
+
+kubectl get pods -n devops-tools -w
+
+### Step 6: Get Jenkins Admin Password
+
+#### Get the Jenkins pod name
+```bash
+JENKINS_POD=$(kubectl get pods -n devops-tools -l app=jenkins -o jsonpath="{.items[0].metadata.name}")
+```
+#### Get the initial admin password
+```bash
+kubectl exec -it $JENKINS_POD -n devops-tools -- cat /var/jenkins_home/secrets/initialAdminPassword
+```
+Step 7: Access and Configure Jenkins
+1. Access Jenkins at http://10.34.7.115:32000/
+2. Enter the admin password obtained in the previous step
+3. Install suggested plugins
+4. Create an admin user when prompted:
+5. Username: admin
+6. Password: (choose a secure password)
+7. Full name: Jenkins Admin
+8. Email: your-email@example.com
+9. Click "Save and Continue"
+10. On the Instance Configuration page, confirm the Jenkins URL: http://10.34.7.115:32000/
+11. Click "Save and Finish"
+#### Step 8: Install Required Plugins
+1. Go to "Manage Jenkins" > "Manage Plugins" > "Available" tab
+2. Search for and select the following plugins:
+- Kubernetes
+- Docker Pipeline
+- Pipeline: Kubernetes
+- Git
+- GitHub Integration
+3. Click "Install without restart"
+4. Check "Restart Jenkins when installation is complete and no jobs are running"
+### Step 9: Configure Kubernetes Cloud
+After Jenkins restarts:
+
+1. Go to "Manage Jenkins" > "Manage Nodes and Clouds" > "Configure Clouds"
+2. Click "Add a new cloud" > "Kubernetes"
+3. Configure as follows:
+- Name: k8s
+- Kubernetes URL: https://10.34.7.115:6443
+- Kubernetes Namespace: devops-tools
+- Check "Disable HTTPS certificate check"
+- Jenkins URL: http://jenkins.devops-tools.svc.cluster.local:8080
+4. Click "Test Connection" to verify - you should see "Connection test successful"
+5. Under "Pod Templates" > "Add Pod Template":
+- Name: jenkins-agent
+- Namespace: devops-tools
+- Labels: jenkins-agent
+6. Under "Container Templates" > "Add Container":
+- Name: jnlp
+- Docker image: jenkins/inbound-agent:latest
+7. Click "Save"
+### Step 10: Create kubeconfig Secret for Jenkins
+This step ensures Jenkins has proper access to the Kubernetes API:
+### Create kubeconfig secret for Jenkins
+kubectl create secret generic jenkins-kubeconfig \
+  --from-file=config=/home/widhi/.kube/config \
+  -n devops-tools || true
+
+### Step 11: Configure Docker Registry Access
+Go to "Manage Jenkins" > "Manage Credentials" > "Jenkins" > "Global credentials" > "Add Credentials"
+Configure as follows:
+Kind: Username with password
+Scope: Global
+Username: (your registry username if needed, or leave blank for anonymous)
+Password: (your registry password if needed, or leave blank for anonymous)
+ID: docker-registry
+Description: Docker Registry Credentials
+Click "OK"
 
 ## 2. Prerequisites
 
