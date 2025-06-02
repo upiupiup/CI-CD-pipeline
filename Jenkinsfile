@@ -30,10 +30,10 @@ pipeline {
                 // Untuk Jenkins, lebih aman menjalankan ini di dalam sh block
                 sh '''
                     eval $(minikube -p minikube docker-env)
-                    echo "Building Docker image directly into Minikube's Docker daemon: ${APP_NAME}:${BUILD_ID}"
+                    echo "Building Docker image: ${APP_NAME}:${BUILD_ID}"
                     docker build -t ${APP_NAME}:${BUILD_ID} .
-                    echo "Tagging Docker image as ${APP_NAME}:latest"
-                    docker build -t ${APP_NAME}:latest . 
+                    echo "Tagging image ${APP_NAME}:${BUILD_ID} as ${APP_NAME}:latest"
+                    docker tag ${APP_NAME}:${BUILD_ID} ${APP_NAME}:latest
                 '''
                 // Catatan: 'docker build' dua kali mungkin tidak efisien jika tidak ada perubahan.
                 // Cukup 'docker tag ${APP_NAME}:${BUILD_ID} ${APP_NAME}:latest' setelah build pertama.
