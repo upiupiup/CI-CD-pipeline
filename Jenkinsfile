@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_REGISTRY = "registry.registry.svc.cluster.local:5000" // Sesuaikan jika menggunakan Docker Hub atau registry lain
+        // DOCKER_REGISTRY tidak lagi digunakan untuk push, tapi nama image tetap penting
         APP_NAME = "carvilla"
         // BUILD_ID adalah variabel bawaan Jenkins
     }
@@ -10,49 +10,64 @@ pipeline {
     stages {
         stage('Checkout & Preparation') {
             steps {
-                // Kode sudah di-checkout oleh Jenkins SCM plugin ke workspace.
                 echo "Kode di-checkout ke workspace: ${env.WORKSPACE}"
-                sh "ls -la"  // Verifikasi isi workspace
+                sh "ls -la"
             }
         }
 
         stage('Run Tests') {
             steps {
-                // Pastikan skrip tes ada di ./tests/test.sh dan executable
                 sh 'chmod +x tests/test.sh'
                 sh './tests/test.sh'
             }
         }
 
-        stage('Build Docker Image') {
+        stage('Build Docker Image for Minikube') {
             steps {
-                // Membangun image. Tag ${DOCKER_REGISTRY}/${APP_NAME}:${BUILD_ID} harus sesuai
-                // dengan yang diharapkan di kubernetes/deployment.yaml (setelah substitusi tag).
-                echo "Building Docker image: ${DOCKER_REGISTRY}/${APP_NAME}:${BUILD_ID}"
-                sh "docker build -t ${DOCKER_REGISTRY}/${APP_NAME}:${BUILD_ID} ."
-                // Opsional: tag juga sebagai 'latest' untuk kemudahan atau jika service K8s merujuk 'latest'
-                sh "docker build -t ${DOCKER_REGISTRY}/${APP_NAME}:latest ."
+                // Mengatur environment Docker agar menunjuk ke Docker daemon Minikube
+                // Perhatikan bahwa '-p minikube' mungkin diperlukan jika profil Minikube-mu bukan default 'minikube'
+                // Jika Minikube profile default, cukup 'eval $(minikube docker-env)'
+                // Untuk Jenkins, lebih aman menjalankan ini di dalam sh block
+                sh '''
+                    eval $(minikube -p minikube docker-env)
+                    echo "Building Docker image directly into Minikube's Docker daemon: ${APP_NAME}:${BUILD_ID}"
+                    docker build -t ${APP_NAME}:${BUILD_ID} .
+                    echo "Tagging Docker image as ${APP_NAME}:latest"
+                    docker build -t ${APP_NAME}:latest . 
+                '''
+                // Catatan: 'docker build' dua kali mungkin tidak efisien jika tidak ada perubahan.
+                // Cukup 'docker tag ${APP_NAME}:${BUILD_ID} ${APP_NAME}:latest' setelah build pertama.
+                // Saya perbaiki di bawah untuk lebih efisien.
             }
         }
-
+        
+        // Tahap 'Push to Registry' bisa di-skip atau dihapus jika menggunakan Minikube docker-env
+        /*
         stage('Push to Registry') {
             steps {
-                // Tahap ini mengasumsikan DOCKER_REGISTRY adalah registry yang bisa dijangkau.
-                // Jika ini Docker Hub atau registry privat, 'docker login' mungkin perlu
-                // ditangani menggunakan 'withCredentials' sebelum push.
-                echo "Pushing image to ${DOCKER_REGISTRY}/${APP_NAME}:${BUILD_ID}"
-                sh "docker push ${DOCKER_REGISTRY}/${APP_NAME}:${BUILD_ID}"
-                sh "docker push ${DOCKER_REGISTRY}/${APP_NAME}:latest" // Push tag 'latest' juga
+                echo "Skipping push to registry as image is built in Minikube's Docker daemon"
             }
         }
+        */
 
         stage('Deploy to Kubernetes') {
             steps {
-                // Perintah sed ini menggantikan placeholder literal '\${BUILD_ID}' di deployment.yaml
+                // Pastikan deployment.yaml menggunakan nama image yang benar (tanpa registry prefix)
+                // dan imagePullPolicy: IfNotPresent atau Never
+                // Contoh: image: carvilla:${BUILD_ID}
+                //         imagePullPolicy: IfNotPresent
+                //
+                // Perintah sed ini menggantikan placeholder '\${BUILD_ID}' di deployment.yaml
                 // dengan nilai BUILD_ID Jenkins saat ini.
-                // Pastikan kubernetes/deployment.yaml memiliki image: <registry>/<appname>:\${BUILD_ID}
-                echo "Updating deployment.yaml with tag: ${BUILD_ID}"
+                echo "Updating deployment.yaml with image tag: ${BUILD_ID} for image ${APP_NAME}"
+                // Pastikan sed command ini sesuai dengan format image di deployment.yaml-mu
+                // Contoh jika deployment.yaml punya: image: carvilla:\${BUILD_ID}
+                sh "sed -i 's|image: ${APP_NAME}:\\\${BUILD_ID}|image: ${APP_NAME}:${BUILD_ID}|g' kubernetes/deployment.yaml"
+                // Atau jika hanya mengganti tag setelah nama image yang fix:
+                // sh "sed -i 's|${APP_NAME}:.*|${APP_NAME}:${BUILD_ID}|g' kubernetes/deployment.yaml"
+                // Atau yang lebih spesifik:
                 sh "sed -i 's|\\\${BUILD_ID}|${BUILD_ID}|g' kubernetes/deployment.yaml"
+
 
                 echo "Applying Kubernetes manifests..."
                 sh "kubectl apply -f kubernetes/deployment.yaml"
@@ -62,7 +77,6 @@ pipeline {
 
         stage('Verify Deployment') {
             steps {
-                // Pastikan 'carvilla-web' adalah nama deployment yang benar di file deployment.yaml
                 echo "Verifying deployment rollout status..."
                 sh "kubectl rollout status deployment/carvilla-web -n default"
                 echo "Verifikasi deployment selesai."
