@@ -24,51 +24,61 @@ pipeline {
 
         stage('Build Docker Image for Minikube') {
                 steps {
-                    sh '''
+                    sh(script: '''
                         echo "--- Debugging minikube docker-env ---"
                         
                         echo "Verifying Minikube status (running as ubuntu via sudo):"
                         # GANTI PATH AKTUAL JIKA PERLU
                         sudo -H -u ubuntu /usr/local/bin/minikube status
+                        MINIKUBE_STATUS_EXIT_CODE=$?
+                        if [ "${MINIKUBE_STATUS_EXIT_CODE}" -ne 0 ]; then
+                            echo "Minikube status command failed with exit code ${MINIKUBE_STATUS_EXIT_CODE}"
+                            exit 1
+                        fi
                         
                         echo "Attempting to get minikube docker-env (running as ubuntu via sudo):"
                         # GANTI PATH AKTUAL JIKA PERLU
-                        MINIKUBE_DOCKER_ENV_OUTPUT=$(sudo -H -u ubuntu /usr/local/bin/minikube -p minikube docker-env)
+                        MINIKUBE_DOCKER_ENV_COMMANDS=$(sudo -H -u ubuntu /usr/local/bin/minikube -p minikube docker-env | grep "^export")
                         MINIKUBE_DOCKER_ENV_EXIT_CODE=$?
                         
                         echo "Exit code of 'minikube -p minikube docker-env': ${MINIKUBE_DOCKER_ENV_EXIT_CODE}"
-                        echo "Output of 'minikube -p minikube docker-env':"
-                        echo "${MINIKUBE_DOCKER_ENV_OUTPUT}"
+                        echo "Output of 'minikube -p minikube docker-env' (export lines only):"
+                        echo "${MINIKUBE_DOCKER_ENV_COMMANDS}"
                         
-                        if [ "${MINIKUBE_DOCKER_ENV_EXIT_CODE}" -eq 0 ]; then
-                            echo "Attempting to set Minikube Docker environment and build..."
+                        if [ "${MINIKUBE_DOCKER_ENV_EXIT_CODE}" -eq 0 ] && [ -n "${MINIKUBE_DOCKER_ENV_COMMANDS}" ]; then
+                            echo "Attempting Docker build and tag as user ubuntu..."
                             
-                            # Eksekusi semua perintah Docker dalam satu blok sudo sh -c '...'
-                            # Ini memastikan variabel dari eval $(minikube docker-env)
-                            # dan perintah docker build/tag dijalankan dalam shell yang sama sebagai user ubuntu
+                            # Buat string perintah yang akan dijalankan oleh sh -c
+                            # ${MINIKUBE_DOCKER_ENV_COMMANDS} akan berisi beberapa baris "export VAR=VAL"
+                            # APP_NAME dan BUILD_ID adalah variabel environment Jenkins yang sudah ada
+                            
+                            # Perlu escape karakter khusus jika APP_NAME atau BUILD_ID mengandungnya, tapi biasanya tidak.
+                            # Pastikan variabel Jenkins ${APP_NAME} dan ${BUILD_ID} diekspansi oleh Groovy, bukan oleh shell di dalam sudo.
+                            
+                            # Kita akan inject perintah export langsung ke dalam script yang dijalankan sudo
+                            # dan pastikan path docker juga absolut
                             
                             sudo -H -u ubuntu sh -c " \\
-                                eval \$(/usr/local/bin/minikube -p minikube docker-env) && \\
-                                echo 'Docker environment set for user ubuntu:' && \\
-                                env | grep DOCKER_ && \\
+                                ${MINIKUBE_DOCKER_ENV_COMMANDS} && \\
+                                echo 'Docker environment should now be set for user ubuntu.' && \\
+                                echo 'DOCKER_HOST is: ' \$DOCKER_HOST && \\
                                 echo 'Building Docker image: ${APP_NAME}:${BUILD_ID}' && \\
-                                /usr/bin/docker build -t ${APP_NAME}:${BUILD_ID} . && \\
+                                /usr/bin/docker build -t '${APP_NAME}:${BUILD_ID}' . && \\
                                 echo 'Tagging image ${APP_NAME}:${BUILD_ID} as ${APP_NAME}:latest' && \\
-                                /usr/bin/docker tag ${APP_NAME}:${BUILD_ID} ${APP_NAME}:latest \\
+                                /usr/bin/docker tag '${APP_NAME}:${BUILD_ID}' '${APP_NAME}:latest' \\
                             "
-                            SUDO_DOCKER_EXIT_CODE=$? # Tangkap exit code dari blok sudo sh -c
+                            SUDO_DOCKER_EXIT_CODE=$?
                             
                             if [ "${SUDO_DOCKER_EXIT_CODE}" -ne 0 ]; then
                                 echo "Docker build/tag commands failed with exit code ${SUDO_DOCKER_EXIT_CODE}"
                                 exit 1
                             fi
-                            
                         else
-                            echo "Skipping docker build due to minikube docker-env failure."
+                            echo "Skipping docker build due to minikube docker-env failure or empty output."
                             exit 1 
                         fi
                         echo "--- End Debugging ---"
-                    '''
+                    '''.stripIndent()) // stripIndent penting untuk blok sh multi-baris
                 }
             }
         
