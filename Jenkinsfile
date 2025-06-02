@@ -23,47 +23,41 @@ pipeline {
         }
 
         stage('Build Docker Image for Minikube') {
-            steps {
-                // Mengatur environment Docker agar menunjuk ke Docker daemon Minikube
-                // Perhatikan bahwa '-p minikube' mungkin diperlukan jika profil Minikube-mu bukan default 'minikube'
-                // Jika Minikube profile default, cukup 'eval $(minikube docker-env)'
-                // Untuk Jenkins, lebih aman menjalankan ini di dalam sh block
-                sh '''
-                    echo "--- Debugging minikube docker-env ---"
+                steps {
+                    sh '''
+                        echo "--- Debugging minikube docker-env ---"
+                        
+                        echo "Verifying Minikube status (ran as Jenkins user):"
+                        # GANTI /usr/local/bin/minikube DENGAN PATH AKTUAL JIKA PERLU
+                        /usr/local/bin/minikube status || echo "Minikube status command failed"
+                        echo "Exit code for 'minikube status': $?"
+                        
+                        echo "Attempting to get minikube docker-env (ran as Jenkins user):"
+                        # GANTI /usr/local/bin/minikube DENGAN PATH AKTUAL JIKA PERLU
+                        MINIKUBE_DOCKER_ENV_OUTPUT=$(/usr/local/bin/minikube -p minikube docker-env)
+                        MINIKUBE_DOCKER_ENV_EXIT_CODE=$?
+                        
+                        echo "Exit code of 'minikube -p minikube docker-env': ${MINIKUBE_DOCKER_ENV_EXIT_CODE}"
+                        echo "Output of 'minikube -p minikube docker-env':"
+                        echo "${MINIKUBE_DOCKER_ENV_OUTPUT}"
+                        
+                        if [ "${MINIKUBE_DOCKER_ENV_EXIT_CODE}" -eq 0 ]; then
+                            echo "Attempting eval..."
+                            eval "${MINIKUBE_DOCKER_ENV_OUTPUT}"
+                            echo "Exit code after eval: $?"
 
-                    echo "Verifying Minikube status (ran as Jenkins user):"
-                    /usr/local/bin/minikube status || echo "Minikube status command failed" // GANTI PATH INI JIKA PERLU
-                    echo "Exit code for 'minikube status': $?"
-
-                    echo "Attempting to get minikube docker-env (ran as Jenkins user):"
-                    // GANTI PATH /usr/local/bin/minikube DI BAWAH INI JIKA PERLU
-                    MINIKUBE_DOCKER_ENV_OUTPUT=$(/usr/local/bin/minikube -p minikube docker-env)
-                    MINIKUBE_DOCKER_ENV_EXIT_CODE=$?
-
-                    echo "Exit code of 'minikube -p minikube docker-env': ${MINIKUBE_DOCKER_ENV_EXIT_CODE}"
-                    echo "Output of 'minikube -p minikube docker-env':"
-                    echo "${MINIKUBE_DOCKER_ENV_OUTPUT}"
-
-                    if [ "${MINIKUBE_DOCKER_ENV_EXIT_CODE}" -eq 0 ]; then
-                        echo "Attempting eval..."
-                        eval "${MINIKUBE_DOCKER_ENV_OUTPUT}"
-                        echo "Exit code after eval: $?"
-
-                        echo "Building Docker image: ${APP_NAME}:${BUILD_ID}"
-                        docker build -t ${APP_NAME}:${BUILD_ID} .
-                        echo "Tagging image ${APP_NAME}:${BUILD_ID} as ${APP_NAME}:latest"
-                        docker tag ${APP_NAME}:${BUILD_ID} ${APP_NAME}:latest
-                    else
-                        echo "Skipping eval and docker build due to minikube docker-env failure."
-                        exit 1 // Memberi tahu Jenkins bahwa stage ini gagal
-                    fi
-                    echo "--- End Debugging ---"
-                '''
-                // Catatan: 'docker build' dua kali mungkin tidak efisien jika tidak ada perubahan.
-                // Cukup 'docker tag ${APP_NAME}:${BUILD_ID} ${APP_NAME}:latest' setelah build pertama.
-                // Saya perbaiki di bawah untuk lebih efisien.
+                            echo "Building Docker image: ${APP_NAME}:${BUILD_ID}"
+                            docker build -t ${APP_NAME}:${BUILD_ID} .
+                            echo "Tagging image ${APP_NAME}:${BUILD_ID} as ${APP_NAME}:latest"
+                            docker tag ${APP_NAME}:${BUILD_ID} ${APP_NAME}:latest
+                        else
+                            echo "Skipping eval and docker build due to minikube docker-env failure."
+                            exit 1 # Memberi tahu Jenkins bahwa stage ini gagal
+                        fi
+                        echo "--- End Debugging ---"
+                    '''
+                }
             }
-        }
         
         // Tahap 'Push to Registry' bisa di-skip atau dihapus jika menggunakan Minikube docker-env
         /*
