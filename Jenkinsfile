@@ -4,7 +4,7 @@ pipeline {
     environment {
         DOCKER_REGISTRY = "registry.registry.svc.cluster.local:5000"
         APP_NAME = "carvilla"
-        LOCAL_REPO_PATH = "/home/widhi/git-repos/CI-CD-pipeline"
+        LOCAL_REPO_PATH = "/home/aufiifathin/cicd-automasi"
     }
     
     stages {
@@ -58,7 +58,7 @@ pipeline {
         stage('Verify Deployment') {
             steps {
                 sh "kubectl rollout status deployment/carvilla-web -n default"
-                echo "Application deployed and accessible at http://10.34.7.115:40000"
+                echo "Application deployed and accessible at http://192.168.49.2:31000"
             }
         }
     }
