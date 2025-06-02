@@ -59,7 +59,6 @@ pipeline {
                     fi
                     echo "--- End Debugging ---"
                 '''
-                '''
                 // Catatan: 'docker build' dua kali mungkin tidak efisien jika tidak ada perubahan.
                 // Cukup 'docker tag ${APP_NAME}:${BUILD_ID} ${APP_NAME}:latest' setelah build pertama.
                 // Saya perbaiki di bawah untuk lebih efisien.
