@@ -29,8 +29,7 @@ pipeline {
                         
                         echo "Verifying Minikube status (running as ubuntu via sudo):"
                         # GANTI PATH AKTUAL JIKA PERLU
-                        sudo -H -u ubuntu /usr/local/bin/minikube status || echo "Minikube status command failed"
-                        echo "Exit code for 'minikube status': $?"
+                        sudo -H -u ubuntu /usr/local/bin/minikube status
                         
                         echo "Attempting to get minikube docker-env (running as ubuntu via sudo):"
                         # GANTI PATH AKTUAL JIKA PERLU
@@ -42,20 +41,30 @@ pipeline {
                         echo "${MINIKUBE_DOCKER_ENV_OUTPUT}"
                         
                         if [ "${MINIKUBE_DOCKER_ENV_EXIT_CODE}" -eq 0 ]; then
-                            echo "Attempting eval (environment will be set for this sh step)..."
-                            # Eval di sini akan mengatur variabel untuk sisa sh step ini.
-                            # Docker commands di bawah akan menggunakan DOCKER_HOST, DOCKER_CERT_PATH, dll dari ubuntu.
-                            eval "${MINIKUBE_DOCKER_ENV_OUTPUT}"
-                            echo "Exit code after eval: $?"
-
-                            echo "Building Docker image (running as ubuntu via sudo): ${APP_NAME}:${BUILD_ID}"
-                            # GANTI PATH AKTUAL JIKA PERLU
-                            sudo -E -u ubuntu /usr/bin/docker build -t ${APP_NAME}:${BUILD_ID} .
-                            echo "Tagging image (running as ubuntu via sudo) ${APP_NAME}:${BUILD_ID} as ${APP_NAME}:latest"
-                            # GANTI PATH AKTUAL JIKA PERLU
-                            sudo -E -u ubuntu /usr/bin/docker tag ${APP_NAME}:${BUILD_ID} ${APP_NAME}:latest
+                            echo "Attempting to set Minikube Docker environment and build..."
+                            
+                            # Eksekusi semua perintah Docker dalam satu blok sudo sh -c '...'
+                            # Ini memastikan variabel dari eval $(minikube docker-env)
+                            # dan perintah docker build/tag dijalankan dalam shell yang sama sebagai user ubuntu
+                            
+                            sudo -H -u ubuntu sh -c " \\
+                                eval \$(/usr/local/bin/minikube -p minikube docker-env) && \\
+                                echo 'Docker environment set for user ubuntu:' && \\
+                                env | grep DOCKER_ && \\
+                                echo 'Building Docker image: ${APP_NAME}:${BUILD_ID}' && \\
+                                /usr/bin/docker build -t ${APP_NAME}:${BUILD_ID} . && \\
+                                echo 'Tagging image ${APP_NAME}:${BUILD_ID} as ${APP_NAME}:latest' && \\
+                                /usr/bin/docker tag ${APP_NAME}:${BUILD_ID} ${APP_NAME}:latest \\
+                            "
+                            SUDO_DOCKER_EXIT_CODE=$? # Tangkap exit code dari blok sudo sh -c
+                            
+                            if [ "${SUDO_DOCKER_EXIT_CODE}" -ne 0 ]; then
+                                echo "Docker build/tag commands failed with exit code ${SUDO_DOCKER_EXIT_CODE}"
+                                exit 1
+                            fi
+                            
                         else
-                            echo "Skipping eval and docker build due to minikube docker-env failure."
+                            echo "Skipping docker build due to minikube docker-env failure."
                             exit 1 
                         fi
                         echo "--- End Debugging ---"
