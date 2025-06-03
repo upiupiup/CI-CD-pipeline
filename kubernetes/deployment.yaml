@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
       - name: carvilla-web
-        image: carvilla:\${BUILD_ID}
+        image: carvilla:IMAGE_TAG_PLACEHOLDER
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 80
