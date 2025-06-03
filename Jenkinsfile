@@ -1,4 +1,4 @@
-// Jenkinsfile - Versi Lengkap Terbaru
+// Jenkinsfile - Versi dengan Placeholder Sederhana di deployment.yaml
 pipeline {
     agent any
 
@@ -29,16 +29,15 @@ pipeline {
                     echo "--- Debugging minikube docker-env ---"
                     
                     echo "Verifying Minikube status (running as ubuntu via sudo):"
-                    sudo -H -u ubuntu /usr/local/bin/minikube status # Ganti path jika perlu
+                    sudo -H -u ubuntu /usr/local/bin/minikube status # Ganti path jika output 'which minikube' berbeda
                     MINIKUBE_STATUS_EXIT_CODE=\$?
                     if [ "\${MINIKUBE_STATUS_EXIT_CODE}" -ne 0 ]; then
                         echo "Minikube status command failed with exit code \${MINIKUBE_STATUS_EXIT_CODE}"
-                        exit 1
+                        exit 1 # Keluar dari sh step jika gagal
                     fi
                     
                     echo "Attempting to get minikube docker-env (running as ubuntu via sudo):"
-                    # Ganti path /usr/local/bin/minikube jika perlu
-                    MINIKUBE_DOCKER_ENV_COMMANDS=\$(sudo -H -u ubuntu /usr/local/bin/minikube -p minikube docker-env | grep "^export")
+                    MINIKUBE_DOCKER_ENV_COMMANDS=\$(sudo -H -u ubuntu /usr/local/bin/minikube -p minikube docker-env | grep "^export") # Ganti path jika perlu
                     MINIKUBE_DOCKER_ENV_EXIT_CODE=\$?
                     
                     echo "Exit code of 'minikube -p minikube docker-env': \${MINIKUBE_DOCKER_ENV_EXIT_CODE}"
@@ -57,16 +56,16 @@ pipeline {
                             /usr/bin/docker build -t '${env.APP_NAME}:${env.BUILD_ID}' . && \\
                             echo 'Tagging image ${env.APP_NAME}:${env.BUILD_ID} as ${env.APP_NAME}:latest' && \\
                             /usr/bin/docker tag '${env.APP_NAME}:${env.BUILD_ID}' '${env.APP_NAME}:latest' \\
-                        "
+                        " # Ganti path /usr/bin/docker jika output 'which docker' berbeda
                         SUDO_DOCKER_EXIT_CODE=\$?
                         
                         if [ "\${SUDO_DOCKER_EXIT_CODE}" -ne 0 ]; then
                             echo "Docker build/tag commands failed with exit code \${SUDO_DOCKER_EXIT_CODE}"
-                            exit 1
+                            exit 1 # Keluar dari sh step jika gagal
                         fi
                     else
                         echo "Skipping docker build due to minikube docker-env failure or empty output."
-                        exit 1 
+                        exit 1 # Keluar dari sh step jika gagal
                     fi
                     echo "--- End Debugging ---"
                 """.stripIndent())
@@ -82,27 +81,27 @@ pipeline {
                     cat kubernetes/deployment.yaml
                     echo "--------------------------------------------------------"
 
-                    # Mengganti placeholder literal '\${BUILD_ID}' dengan nilai ${env.BUILD_ID}
-                    # Ini mengasumsikan deployment.yaml memiliki 'image: ${env.APP_NAME}:\${BUILD_ID}'
-                    sed -i 's|\\\${BUILD_ID}|'${env.BUILD_ID}'|g' kubernetes/deployment.yaml
+                    # Mengganti IMAGE_TAG_PLACEHOLDER dengan nilai ${env.BUILD_ID} Jenkins
+                    # Pastikan kubernetes/deployment.yaml menggunakan 'image: ${env.APP_NAME}:IMAGE_TAG_PLACEHOLDER'
+                    sed -i "s|IMAGE_TAG_PLACEHOLDER|${env.BUILD_ID}|g" kubernetes/deployment.yaml
                     
                     echo "--- Content of kubernetes/deployment.yaml AFTER sed ---"
                     cat kubernetes/deployment.yaml
                     echo "-------------------------------------------------------"
 
                     echo "Applying Kubernetes manifests as user ubuntu..."
-                    sudo -H -u ubuntu /usr/bin/kubectl apply -f kubernetes/deployment.yaml # Ganti path kubectl jika perlu
+                    sudo -H -u ubuntu /usr/bin/kubectl apply -f kubernetes/deployment.yaml # Ganti path kubectl jika output 'which kubectl' berbeda
                     SUDO_DEPLOY_EXIT_CODE=\$?
                     if [ "\${SUDO_DEPLOY_EXIT_CODE}" -ne 0 ]; then
                         echo "kubectl apply deployment failed with exit code \${SUDO_DEPLOY_EXIT_CODE}"
-                        exit 1
+                        exit 1 # Keluar dari sh step jika gagal
                     fi
 
                     sudo -H -u ubuntu /usr/bin/kubectl apply -f kubernetes/service.yaml # Ganti path kubectl jika perlu
                     SUDO_SERVICE_EXIT_CODE=\$?
                     if [ "\${SUDO_SERVICE_EXIT_CODE}" -ne 0 ]; then
                         echo "kubectl apply service failed with exit code \${SUDO_SERVICE_EXIT_CODE}"
-                        exit 1
+                        exit 1 # Keluar dari sh step jika gagal
                     fi
                 """.stripIndent())
             }
@@ -118,7 +117,7 @@ pipeline {
                     SUDO_ROLLOUT_EXIT_CODE=\$?
                     if [ "\${SUDO_ROLLOUT_EXIT_CODE}" -ne 0 ]; then
                         echo "kubectl rollout status failed with exit code \${SUDO_ROLLOUT_EXIT_CODE}"
-                        exit 1
+                        exit 1 # Keluar dari sh step jika gagal
                     fi
                     
                     echo "Verifikasi deployment selesai."
