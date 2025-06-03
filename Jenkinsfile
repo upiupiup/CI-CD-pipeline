@@ -94,7 +94,8 @@ pipeline {
             stage('Deploy to Kubernetes') {
                 steps {
                     sh(script: """ // Menggunakan triple double quotes untuk multiline string Groovy
-                        echo 'Updating deployment.yaml with image tag: ' + env.BUILD_ID + ' for image ' + env.APP_NAME
+                        echo "Updating deployment.yaml with image tag: ${env.BUILD_ID} for image ${env.APP_NAME}"
+
                         echo "--- Content of kubernetes/deployment.yaml BEFORE sed ---"
                         cat kubernetes/deployment.yaml
                         echo "--------------------------------------------------------"
