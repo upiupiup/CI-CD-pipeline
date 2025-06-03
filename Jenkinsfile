@@ -91,7 +91,7 @@ pipeline {
         }
         */
 
-stage('Deploy to Kubernetes') {
+        stage('Deploy to Kubernetes') {
                 steps {
                     sh(script: '''
                         echo "Updating deployment.yaml with image tag: ${BUILD_ID} for image ${APP_NAME}"
@@ -100,9 +100,18 @@ stage('Deploy to Kubernetes') {
                         cat kubernetes/deployment.yaml
                         echo "--------------------------------------------------------"
 
-                        # Mencari baris yang mengandung 'image: ${APP_NAME}:' lalu mengganti '\${BUILD_ID}' di baris itu
-                        # Ini lebih tahan jika ada spasi ekstra atau sedikit variasi
-                        sed -i "/image: ${APP_NAME}:/s|\\\${BUILD_ID}|${BUILD_ID}|g" kubernetes/deployment.yaml
+                        # Kita akan menggunakan single quote untuk sebagian besar string sed
+                        # untuk mencegah ekspansi shell yang tidak diinginkan,
+                        # dan hanya menggunakan double quote untuk variabel Jenkins ${BUILD_ID}
+                        # Pola: cari 'image: APP_NAME:\${BUILD_ID}' ganti dengan 'image: APP_NAME:ACTUAL_BUILD_ID'
+                        
+                        # Cara 1: Menggunakan single quote dan menyuntikkan variabel BUILD_ID
+                        # Ini adalah cara yang paling mungkin berhasil dengan benar untuk escaping
+                        sed -i 's|image: '${APP_NAME}':\\${BUILD_ID}|image: '${APP_NAME}':'${BUILD_ID}'|g' kubernetes/deployment.yaml
+
+                        # Cara 2 (Alternatif jika Cara 1 masih aneh, tapi Cara 1 lebih standar):
+                        # sed -i "s|image: ${APP_NAME}:\\\${BUILD_ID}|image: ${APP_NAME}:${BUILD_ID}|g" kubernetes/deployment.yaml
+                        # (Ini yang kita gunakan sebelumnya dan menghasilkan \19, jadi kita coba Cara 1)
                         
                         echo "--- Content of kubernetes/deployment.yaml AFTER sed ---"
                         cat kubernetes/deployment.yaml
@@ -124,8 +133,7 @@ stage('Deploy to Kubernetes') {
                         fi
                     '''.stripIndent())
                 }
-            }
-        
+            }        
         stage('Verify Deployment') {
             steps {
                 sh(script: '''
