@@ -91,42 +91,41 @@ pipeline {
         }
         */
 
-        stage('Deploy to Kubernetes') {
-            steps {
-                sh(script: '''
-                    echo "Updating deployment.yaml with image tag: ${BUILD_ID} for image ${APP_NAME}"
+stage('Deploy to Kubernetes') {
+                steps {
+                    sh(script: '''
+                        echo "Updating deployment.yaml with image tag: ${BUILD_ID} for image ${APP_NAME}"
+                        
+                        echo "--- Content of kubernetes/deployment.yaml BEFORE sed ---"
+                        cat kubernetes/deployment.yaml
+                        echo "--------------------------------------------------------"
 
-                    echo "--- Content of kubernetes/deployment.yaml BEFORE sed ---"
-                    cat kubernetes/deployment.yaml
-                    echo "--------------------------------------------------------"
+                        # Mencari baris yang mengandung 'image: ${APP_NAME}:' lalu mengganti '\${BUILD_ID}' di baris itu
+                        # Ini lebih tahan jika ada spasi ekstra atau sedikit variasi
+                        sed -i "/image: ${APP_NAME}:/s|\\\${BUILD_ID}|${BUILD_ID}|g" kubernetes/deployment.yaml
+                        
+                        echo "--- Content of kubernetes/deployment.yaml AFTER sed ---"
+                        cat kubernetes/deployment.yaml
+                        echo "-------------------------------------------------------"
 
-                    # Perintah sed-mu (pastikan polanya cocok dengan isi deployment.yaml)
-                    # Ini mengasumsikan deployment.yaml-mu punya: image: carvilla:\${BUILD_ID}
-                    sed -i 's|image: ${APP_NAME}:\\\${BUILD_ID}|image: ${APP_NAME}:${BUILD_ID}|g' kubernetes/deployment.yaml
+                        echo "Applying Kubernetes manifests as user ubuntu..."
+                        sudo -H -u ubuntu /usr/bin/kubectl apply -f kubernetes/deployment.yaml
+                        SUDO_DEPLOY_EXIT_CODE=$?
+                        if [ "${SUDO_DEPLOY_EXIT_CODE}" -ne 0 ]; then
+                            echo "kubectl apply deployment failed with exit code ${SUDO_DEPLOY_EXIT_CODE}"
+                            exit 1
+                        fi
 
-                    echo "--- Content of kubernetes/deployment.yaml AFTER sed ---"
-                    cat kubernetes/deployment.yaml
-                    echo "-------------------------------------------------------"
-
-                    echo "Applying Kubernetes manifests as user ubuntu..."
-                    # GANTI PATH AKTUAL /usr/bin/kubectl JIKA PERLU
-                    sudo -H -u ubuntu /usr/bin/kubectl apply -f kubernetes/deployment.yaml
-                    SUDO_DEPLOY_EXIT_CODE=$?
-                    if [ "${SUDO_DEPLOY_EXIT_CODE}" -ne 0 ]; then
-                        echo "kubectl apply deployment failed with exit code ${SUDO_DEPLOY_EXIT_CODE}"
-                        exit 1
-                    fi
-
-                    sudo -H -u ubuntu /usr/bin/kubectl apply -f kubernetes/service.yaml
-                    SUDO_SERVICE_EXIT_CODE=$?
-                    if [ "${SUDO_SERVICE_EXIT_CODE}" -ne 0 ]; then
-                        echo "kubectl apply service failed with exit code ${SUDO_SERVICE_EXIT_CODE}"
-                        exit 1
-                    fi
-                '''.stripIndent())
+                        sudo -H -u ubuntu /usr/bin/kubectl apply -f kubernetes/service.yaml
+                        SUDO_SERVICE_EXIT_CODE=$?
+                        if [ "${SUDO_SERVICE_EXIT_CODE}" -ne 0 ]; then
+                            echo "kubectl apply service failed with exit code ${SUDO_SERVICE_EXIT_CODE}"
+                            exit 1
+                        fi
+                    '''.stripIndent())
+                }
             }
-        }
-
+        
         stage('Verify Deployment') {
             steps {
                 sh(script: '''
