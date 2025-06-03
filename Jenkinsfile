@@ -91,27 +91,71 @@ pipeline {
         }
         */
 
-        stage('Deploy to Kubernetes') {
+            stage('Deploy to Kubernetes') {
                 steps {
-                    sh(script: '''
-                        echo "Updating deployment.yaml with image tag: ${BUILD_ID} for image ${APP_NAME}"
+                    sh(script: """ // Menggunakan triple double quotes untuk multiline string Groovy
+                        echo "Updating deployment.yaml with image tag: ${env.BUILD_ID} for image ${env.APP_NAME}"
                         
                         echo "--- Content of kubernetes/deployment.yaml BEFORE sed ---"
                         cat kubernetes/deployment.yaml
                         echo "--------------------------------------------------------"
 
-                        # Kita akan menggunakan single quote untuk sebagian besar string sed
-                        # untuk mencegah ekspansi shell yang tidak diinginkan,
-                        # dan hanya menggunakan double quote untuk variabel Jenkins ${BUILD_ID}
-                        # Pola: cari 'image: APP_NAME:\${BUILD_ID}' ganti dengan 'image: APP_NAME:ACTUAL_BUILD_ID'
-                        
-                        # Cara 1: Menggunakan single quote dan menyuntikkan variabel BUILD_ID
-                        # Ini adalah cara yang paling mungkin berhasil dengan benar untuk escaping
-                        sed -i 's|image: '${APP_NAME}':\\${BUILD_ID}|image: '${APP_NAME}':'${BUILD_ID}'|g' kubernetes/deployment.yaml
+                        # Variabel Jenkins/Groovy akan diekspansi di sini
+                        # Pola untuk sed: cari '\${BUILD_ID}' ganti dengan 'nilai_build_id_jenkins'
+                        # Kita perlu escape $ dan { } untuk sed jika ingin literal, tapi kita ingin literal \${BUILD_ID}
+                        # \\\ -> \ (untuk shell)
+                        # \\$ -> \$ (untuk sed agar $ literal)
+                        # Jadi, untuk mencari \${BUILD_ID} literal: \\\\\\\\\\${BUILD_ID} akan terlalu rumit.
 
-                        # Cara 2 (Alternatif jika Cara 1 masih aneh, tapi Cara 1 lebih standar):
-                        # sed -i "s|image: ${APP_NAME}:\\\${BUILD_ID}|image: ${APP_NAME}:${BUILD_ID}|g" kubernetes/deployment.yaml
-                        # (Ini yang kita gunakan sebelumnya dan menghasilkan \19, jadi kita coba Cara 1)
+                        # Cara yang lebih sederhana:
+                        # Pastikan deployment.yaml punya placeholder unik, misal: IMAGE_TAG_PLACEHOLDER
+                        # Lalu: sed -i "s|IMAGE_TAG_PLACEHOLDER|${env.BUILD_ID}|g" kubernetes/deployment.yaml
+                        # Ini jauh lebih aman dan mudah.
+
+                        # NAMUN, jika kita HARUS tetap dengan \${BUILD_ID} di YAML:
+                        # Pola pencarian untuk sed adalah string literal: \${BUILD_ID}
+                        # Pola pengganti adalah nilai dari env.BUILD_ID
+                        
+                        # Mari kita coba escape \ dan $ dengan hati-hati untuk sed di dalam shell
+                        # String yang ingin kita cari di file: image: carvilla:\${BUILD_ID}
+                        # String pengganti: image: carvilla:20 (misalnya)
+                        
+                        # Perintah sed:
+                        # sed 's/SEARCH_PATTERN/REPLACE_PATTERN/' file
+                        # SEARCH_PATTERN: image: carvilla:\\\${BUILD_ID} (agar sed melihat literal \${BUILD_ID})
+                        #   - \ akan menjadi literal \ untuk sed
+                        #   - \$ akan menjadi literal $ untuk sed
+                        # REPLACE_PATTERN: image: carvilla:${env.BUILD_ID}
+                        
+                        # Menggunakan single quote untuk sed agar shell tidak banyak interpretasi,
+                        # lalu menyuntikkan variabel Jenkins dengan string concatenation.
+                        
+                        SEARCH_FOR='image: '${env.APP_NAME}':\\${BUILD_ID}' # String Groovy, akan menjadi 'image: carvilla:\\${BUILD_ID}'
+                        REPLACE_WITH='image: '${env.APP_NAME}':'${env.BUILD_ID} # String Groovy, akan menjadi 'image: carvilla:20'
+                        
+                        echo "SED Search: ${SEARCH_FOR}"
+                        echo "SED Replace: ${REPLACE_WITH}"
+                        
+                        # Menggunakan / sebagai delimiter agar tidak bentrok jika path mengandung /
+                        # sed -i 's|'"{SEARCH_FOR}"'|'"{REPLACE_WITH}"'|g' kubernetes/deployment.yaml
+                        # Baris di atas mungkin salah karena interpolasi di dalam single quote.
+
+                        # Cara yang lebih aman untuk string kompleks di sed dari variabel shell:
+                        # Export variabel lalu gunakan di sed. Tapi di Jenkinsfile sh, ini satu blok.
+
+                        # Paling sederhana dan mungkin berhasil jika yaml punya \${BUILD_ID}:
+                        # Kita ingin sed mencari literal '\${BUILD_ID}' dan menggantinya dengan nilai dari ${env.BUILD_ID} (misal 20)
+                        # Di dalam double quotes untuk sh, $ perlu di-escape agar tidak diekspansi shell, tapi kita ingin ${env.BUILD_ID} diekspansi Groovy.
+                        
+                        # Mari kita gunakan pendekatan yang lebih sederhana:
+                        # Jika `deployment.yaml` punya `image: carvilla:IMAGE_TAG_PLACEHOLDER`
+                        # Maka `sed -i "s|IMAGE_TAG_PLACEHOLDER|${env.BUILD_ID}|g" kubernetes/deployment.yaml` akan mudah.
+
+                        # Karena kita terjebak dengan \${BUILD_ID} di YAML, coba ini:
+                        # Ini akan mengganti SEMUA kemunculan '\${BUILD_ID}' dengan nilai ${env.BUILD_ID}
+                        # Ini kurang aman jika '\${BUILD_ID}' muncul di tempat lain, tapi untuk file kecil ini mungkin OK.
+                        echo "Trying a simpler sed to replace literal \\\${BUILD_ID} with ${env.BUILD_ID}"
+                        sed -i 's|\\\${BUILD_ID}|'${env.BUILD_ID}'|g' kubernetes/deployment.yaml
                         
                         echo "--- Content of kubernetes/deployment.yaml AFTER sed ---"
                         cat kubernetes/deployment.yaml
@@ -119,21 +163,22 @@ pipeline {
 
                         echo "Applying Kubernetes manifests as user ubuntu..."
                         sudo -H -u ubuntu /usr/bin/kubectl apply -f kubernetes/deployment.yaml
-                        SUDO_DEPLOY_EXIT_CODE=$?
-                        if [ "${SUDO_DEPLOY_EXIT_CODE}" -ne 0 ]; then
-                            echo "kubectl apply deployment failed with exit code ${SUDO_DEPLOY_EXIT_CODE}"
+                        SUDO_DEPLOY_EXIT_CODE=\$?
+                        if [ "\${SUDO_DEPLOY_EXIT_CODE}" -ne 0 ]; then
+                            echo "kubectl apply deployment failed with exit code \${SUDO_DEPLOY_EXIT_CODE}"
                             exit 1
                         fi
 
                         sudo -H -u ubuntu /usr/bin/kubectl apply -f kubernetes/service.yaml
-                        SUDO_SERVICE_EXIT_CODE=$?
-                        if [ "${SUDO_SERVICE_EXIT_CODE}" -ne 0 ]; then
-                            echo "kubectl apply service failed with exit code ${SUDO_SERVICE_EXIT_CODE}"
+                        SUDO_SERVICE_EXIT_CODE=\$?
+                        if [ "\${SUDO_SERVICE_EXIT_CODE}" -ne 0 ]; then
+                            echo "kubectl apply service failed with exit code \${SUDO_SERVICE_EXIT_CODE}"
                             exit 1
                         fi
-                    '''.stripIndent())
+                    """.stripIndent()) // stripIndent penting
                 }
-            }        
+            }
+        
         stage('Verify Deployment') {
             steps {
                 sh(script: '''
