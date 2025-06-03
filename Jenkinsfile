@@ -95,23 +95,17 @@ pipeline {
             steps {
                 sh(script: '''
                     echo "Updating deployment.yaml with image tag: ${BUILD_ID} for image ${APP_NAME}"
-                    # Pastikan hanya satu perintah sed yang efektif dan benar sesuai isi deployment.yaml
-                    # Jika deployment.yaml memiliki 'image: carvilla:\${BUILD_ID}'
                     sed -i 's|image: ${APP_NAME}:\\\${BUILD_ID}|image: ${APP_NAME}:${BUILD_ID}|g' kubernetes/deployment.yaml
-                    # Atau jika hanya mengganti placeholder \${BUILD_ID} di mana saja:
-                    # sed -i 's|\\\${BUILD_ID}|${BUILD_ID}|g' kubernetes/deployment.yaml
-                    # Pilih salah satu yang paling sesuai. Untuk sekarang, saya asumsikan yang pertama lebih aman.
 
                     echo "Applying Kubernetes manifests as user ubuntu..."
-                    # GANTI PATH AKTUAL /usr/local/bin/kubectl JIKA PERLU
-                    sudo -H -u ubuntu /usr/local/bin/kubectl apply -f kubernetes/deployment.yaml
+                    sudo -H -u ubuntu /usr/bin/kubectl apply -f kubernetes/deployment.yaml  # <--- PATH KUBECTL DIPERBARUI
                     SUDO_DEPLOY_EXIT_CODE=$?
                     if [ "${SUDO_DEPLOY_EXIT_CODE}" -ne 0 ]; then
                         echo "kubectl apply deployment failed with exit code ${SUDO_DEPLOY_EXIT_CODE}"
                         exit 1
                     fi
 
-                    sudo -H -u ubuntu /usr/local/bin/kubectl apply -f kubernetes/service.yaml
+                    sudo -H -u ubuntu /usr/bin/kubectl apply -f kubernetes/service.yaml    # <--- PATH KUBECTL DIPERBARUI
                     SUDO_SERVICE_EXIT_CODE=$?
                     if [ "${SUDO_SERVICE_EXIT_CODE}" -ne 0 ]; then
                         echo "kubectl apply service failed with exit code ${SUDO_SERVICE_EXIT_CODE}"
@@ -125,15 +119,14 @@ pipeline {
             steps {
                 sh(script: '''
                     echo "Verifying deployment rollout status as user ubuntu..."
-                    # GANTI PATH AKTUAL /usr/local/bin/kubectl JIKA PERLU
                     # Ganti 'carvilla-web' jika nama deploymentmu berbeda
-                    sudo -H -u ubuntu /usr/local/bin/kubectl rollout status deployment/carvilla-web -n default
+                    sudo -H -u ubuntu /usr/bin/kubectl rollout status deployment/carvilla-web -n default # <--- PATH KUBECTL DIPERBARUI
                     SUDO_ROLLOUT_EXIT_CODE=$?
                     if [ "${SUDO_ROLLOUT_EXIT_CODE}" -ne 0 ]; then
                         echo "kubectl rollout status failed with exit code ${SUDO_ROLLOUT_EXIT_CODE}"
                         exit 1
                     fi
-                    
+
                     echo "Verifikasi deployment selesai."
                     echo "Untuk mengakses aplikasi, jalankan perintah ini di terminal EC2 sebagai user ubuntu:"
                     echo "minikube service <nama-service-carvilla> --url -p minikube" 
